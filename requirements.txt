@@ -1,5 +1,5 @@
 flask==2.3.3
-aiogram==3.4.1
+aiogram==2.25.2
 glQiwiApi==2.18.3
 gunicorn==23.0.0
 requests==2.32.3
