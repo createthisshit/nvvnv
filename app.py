@@ -129,4 +129,3 @@ if __name__ == "__main__":
     flask_thread = Thread(target=run_flask)
     flask_thread.start()
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
-    )
