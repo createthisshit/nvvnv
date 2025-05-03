@@ -4,28 +4,6 @@ import asyncio
 import logging
 import sys
 import sqlite3
-from datetime import datetime
-from flask import Flask, request, jsonify
-from aiogram import Bot, Dispatcher, types
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.utils import executor
-from glQiwiApi import YooMoneyAPI
-from glQiwiApi.utils import YooMoneyNotification
-
-# Настройки
-TOKEN = "7629991596:AAHkBKWyvz7T2MdaItlQcL90YnOi0Zh11tY"  # Токен Telegram-бота
-YOOMONEY_WALLET = "4100118178122985"  # Номер кошелька YooMoney
-YOOMONEY_SECRET = "CoqQlgE3E5cTzyAKY1LSiLU1"  # Секретное слово YooMoney
-YOOMONEY_AMOUNT = 1  # Сумма подписки в рублях
-GROUP_ID = -1002291268265  # ID закрытой группы
-BASE_URL = "https://nvvnv.onrender.com"  # Замени на URL после деплоя
-
-import uuid
-import requests
-import asyncio
-import logging
-import sys
-import sqlite3
 import hashlib
 from datetime import datetime
 from flask import Flask, request, jsonify
