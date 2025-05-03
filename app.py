@@ -6,11 +6,11 @@ import sys
 import sqlite3
 from datetime import datetime
 from flask import Flask, request, jsonify
-from aiogram import Bot, Dispatcher, F
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
+from aiogram import Bot, Dispatcher
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import Command
 from glQiwiApi import YooMoneyAPI
+from glQiwiApi.utils import YooMoneyNotification
 
 # Настройки
 TOKEN = "7629991596:AAHkBKWyvz7T2MdaItlQcL90YnOi0Zh11tY"  # Токен Telegram-бота
@@ -18,14 +18,14 @@ YOOMONEY_WALLET = "4100118178122985"  # Номер кошелька YooMoney
 YOOMONEY_SECRET = "CoqQlgE3E5cTzyAKY1LSiLU1"  # Секретное слово YooMoney
 YOOMONEY_AMOUNT = 1  # Сумма подписки в рублях
 GROUP_ID = -1002291268265  # ID закрытой группы
-BASE_URL = "https://your-app.onrender.com"  # Замени на URL после деплоя
+BASE_URL = "https://nvvnv.onrender.com"  # Замени на URL после деплоя
 
 # Инициализация Flask
 app = Flask(__name__)
 
 # Инициализация бота
-bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-dp = Dispatcher()
+bot = Bot(token=TOKEN)
+dp = Dispatcher(bot)
 
 # Инициализация SQLite
 def init_db():
@@ -65,7 +65,6 @@ def generate_payment():
 async def webhook():
     data = request.form.to_dict()
     # Проверка подлинности уведомления
-    from glQiwiApi.utils import YooMoneyNotification
     notification = YooMoneyNotification(data, secret=YOOMONEY_SECRET)
     if not notification.is_valid():
         return "Invalid notification", 400
@@ -89,7 +88,7 @@ async def webhook():
     return "OK", 200
 
 # Обработчик сообщений
-@dp.message()
+@dp.message_handler()
 async def command_start_handler(message: Message):
     user_id = str(message.from_user.id)
     # Запрашиваем ссылку на оплату через API
@@ -124,4 +123,4 @@ if __name__ == "__main__":
     flask_thread = Thread(target=run_flask)
     flask_thread.start()
     # Запускаем бота
-    asyncio.run(dp.start_polling(bot))
+    dp.start_polling()
