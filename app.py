@@ -20,6 +20,27 @@ YOOMONEY_AMOUNT = 1  # Сумма подписки в рублях
 GROUP_ID = -1002291268265  # ID закрытой группы
 BASE_URL = "https://nvvnv.onrender.com"  # Замени на URL после деплоя
 
+import uuid
+import requests
+import asyncio
+import logging
+import sys
+import sqlite3
+import hashlib
+from datetime import datetime
+from flask import Flask, request, jsonify
+from aiogram import Bot, Dispatcher, types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.utils import executor
+
+# Настройки
+TOKEN = "7629991596:AAHkBKWyvz7T2MdaItlQcL90YnOi0Zh11tY"  # Токен Telegram-бота
+YOOMONEY_WALLET = "4100118178122985"  # Номер кошелька YooMoney
+YOOMONEY_SECRET = "CoqQlgE3E5cTzyAKY1LSiLU1"  # Секретное слово YooMoney
+YOOMONEY_AMOUNT = 1  # Сумма подписки в рублях
+GROUP_ID = -1002291268265  # ID закрытой группы
+BASE_URL = "https://nvvnv.onrender.com"  # Указан твой URL
+
 # Инициализация Flask
 app = Flask(__name__)
 
@@ -43,14 +64,15 @@ init_db()
 @app.route('/generate_payment', methods=['GET'])
 def generate_payment():
     user_id = request.args.get('user_id')
-    label = str(uuid.uuid4())  # Уникальный идентификатор платежа
-    link = YooMoneyAPI.create_pay_form(
-        receiver=YOOMONEY_WALLET,
-        quick_pay_form="shop",
-        targets="Subscription",
-        payment_type="AC",
-        amount=YOOMONEY_AMOUNT,
-        label=label
+    label = str(uuid.uuid4())
+    payment_url = (
+        f"https://yoomoney.ru/quickpay/confirm.xml?"
+        f"receiver={YOOMONEY_WALLET}&"
+        f"quickpay-form=shop&"
+        f"targets=Subscription&"
+        f"paymentType=AC&"
+        f"sum={YOOMONEY_AMOUNT}&"
+        f"label={label}"
     )
     # Сохраняем временную запись о платеже
     conn = sqlite3.connect('data.db')
@@ -59,15 +81,27 @@ def generate_payment():
               (user_id, YOOMONEY_AMOUNT, label, "pending"))
     conn.commit()
     conn.close()
-    return jsonify({"payment_url": link, "label": label})
+    return jsonify({"payment_url": payment_url, "label": label})
 
 # Webhook для YooMoney
 @app.route('/yoomoney-webhook', methods=['POST'])
 async def webhook():
     data = request.form.to_dict()
     # Проверка подлинности уведомления
-    notification = YooMoneyNotification(data, secret=YOOMONEY_SECRET)
-    if not notification.is_valid():
+    params = [
+        data.get('notification_type', ''),
+        data.get('operation_id', ''),
+        data.get('amount', ''),
+        data.get('currency', ''),
+        data.get('datetime', ''),
+        data.get('sender', ''),
+        data.get('codepro', ''),
+        YOOMONEY_SECRET,
+        data.get('label', '')
+    ]
+    check_string = '&'.join(params)
+    sha1_hash = hashlib.sha1(check_string.encode()).hexdigest()
+    if sha1_hash != data.get('sha1_hash'):
         return "Invalid notification", 400
 
     if data.get('notification_type') == 'p2p-incoming':
