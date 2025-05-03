@@ -6,9 +6,9 @@ import sys
 import sqlite3
 from datetime import datetime
 from flask import Flask, request, jsonify
-from aiogram import Bot, Dispatcher
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command
+from aiogram import Bot, Dispatcher, types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.utils import executor
 from glQiwiApi import YooMoneyAPI
 from glQiwiApi.utils import YooMoneyNotification
 
@@ -25,7 +25,8 @@ app = Flask(__name__)
 
 # Инициализация бота
 bot = Bot(token=TOKEN)
-dp = Dispatcher(bot)
+storage = MemoryStorage()
+dp = Dispatcher(bot, storage=storage)
 
 # Инициализация SQLite
 def init_db():
@@ -88,8 +89,8 @@ async def webhook():
     return "OK", 200
 
 # Обработчик сообщений
-@dp.message_handler()
-async def command_start_handler(message: Message):
+@dp.message_handler(content_types=types.ContentType.ANY)
+async def command_start_handler(message: types.Message):
     user_id = str(message.from_user.id)
     # Запрашиваем ссылку на оплату через API
     response = requests.get(f"{BASE_URL}/generate_payment?user_id={user_id}")
@@ -97,9 +98,8 @@ async def command_start_handler(message: Message):
     payment_url = data["payment_url"]
 
     # Создаем кнопки
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Оплатить", url=payment_url)]
-    ])
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton(text="Оплатить", url=payment_url))
     welcome_text = (
         "Тариф: фулл\n"
         "Стоимость: 500.00 🇷🇺RUB\n"
@@ -110,7 +110,7 @@ async def command_start_handler(message: Message):
     await message.answer(welcome_text, reply_markup=keyboard)
 
 # Запуск бота
-async def on_startup(_):
+def on_startup(_):
     print("Бот запущен")
 
 def run_flask():
@@ -123,4 +123,4 @@ if __name__ == "__main__":
     flask_thread = Thread(target=run_flask)
     flask_thread.start()
     # Запускаем бота
-    dp.start_polling()
+    executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
