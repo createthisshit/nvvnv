@@ -1,5 +1,5 @@
 flask==2.3.3
 aiogram==3.13.1
-yoomoney-api==0.1.0
+glQiwiApi==2.18.3
 gunicorn==23.0.0
 aiohttp==3.10.5
