@@ -51,10 +51,13 @@ async def start_command(message: types.Message):
 def on_startup(_):
     logger.info("Бот запущен")
 
-if __name__ == "__main__":
+def start_bot():
     try:
-        logger.info("Запуск приложения")
+        logger.info("Запуск polling")
         executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
     except Exception as e:
-        logger.error(f"Ошибка запуска бота: {e}")
+        logger.error(f"Ошибка запуска polling: {e}")
         sys.exit(1)
+
+if __name__ == "__main__":
+    start_bot()
