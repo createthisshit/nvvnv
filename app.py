@@ -10,15 +10,15 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from yoomoney_api.notification import Notification
-from yoomoney_api.quickpay import Quickpay
+from glQiwiApi import YooMoneyAPI
 
 # Настройки
 TOKEN = "7629991596:AAHkBKWyvz7T2MdaItlQcL90YnOi0Zh11tY"  # Токен Telegram-бота
 YOOMONEY_WALLET = "4100118178122985"  # Номер кошелька YooMoney
-YOOMONEY_SECRET = "CoqQlgE3E5cTzyAKY1LSiLU1"  # Секретное слово YooMoney (из настроек уведомлений)
+YOOMONEY_SECRET = "CoqQlgE3E5cTzyAKY1LSiLU1"  # Секретное слово YooMoney
 YOOMONEY_AMOUNT = 1  # Сумма подписки в рублях
 GROUP_ID = -1002291268265  # ID закрытой группы
+BASE_URL = "https://your-app.onrender.com"  # Замени на URL после деплоя
 
 # Инициализация Flask
 app = Flask(__name__)
@@ -43,12 +43,13 @@ init_db()
 def generate_payment():
     user_id = request.args.get('user_id')
     label = str(uuid.uuid4())  # Уникальный идентификатор платежа
-    quickpay = Quickpay(
+    link = YooMoneyAPI.create_pay_form(
         receiver=YOOMONEY_WALLET,
-        quickpay_form="shop",
-        sum=YOOMONEY_AMOUNT,
-        label=label,
-        payment_type="AC"
+        quick_pay_form="shop",
+        targets="Subscription",
+        payment_type="AC",
+        amount=YOOMONEY_AMOUNT,
+        label=label
     )
     # Сохраняем временную запись о платеже
     conn = sqlite3.connect('data.db')
@@ -57,13 +58,15 @@ def generate_payment():
               (user_id, YOOMONEY_AMOUNT, label, "pending"))
     conn.commit()
     conn.close()
-    return jsonify({"payment_url": quickpay.redirected_url, "label": label})
+    return jsonify({"payment_url": link, "label": label})
 
 # Webhook для YooMoney
 @app.route('/yoomoney-webhook', methods=['POST'])
 async def webhook():
     data = request.form.to_dict()
-    notification = Notification(data, YOOMONEY_SECRET)
+    # Проверка подлинности уведомления
+    from glQiwiApi.utils import YooMoneyNotification
+    notification = YooMoneyNotification(data, secret=YOOMONEY_SECRET)
     if not notification.is_valid():
         return "Invalid notification", 400
 
@@ -90,7 +93,7 @@ async def webhook():
 async def command_start_handler(message: Message):
     user_id = str(message.from_user.id)
     # Запрашиваем ссылку на оплату через API
-    response = requests.get(f"https://your-app.onrender.com/generate_payment?user_id={user_id}")
+    response = requests.get(f"{BASE_URL}/generate_payment?user_id={user_id}")
     data = response.json()
     payment_url = data["payment_url"]
 
