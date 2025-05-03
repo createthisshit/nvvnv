@@ -9,7 +9,7 @@ from datetime import datetime
 from flask import Flask, request, jsonify
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.utils import executor
+from aiogram.utils.executor import start_webhook
 
 # Настройки
 TOKEN = "7629991596:AAHkBKWyvz7T2MdaItlQcL90YnOi0Zh11tY"  # Токен Telegram-бота
@@ -17,7 +17,9 @@ YOOMONEY_WALLET = "4100118178122985"  # Номер кошелька YooMoney
 YOOMONEY_SECRET = "CoqQlgE3E5cTzyAKY1LSiLU1"  # Секретное слово YooMoney
 YOOMONEY_AMOUNT = 1  # Сумма подписки в рублях
 GROUP_ID = -1002291268265  # ID закрытой группы
-BASE_URL = "https://nvvnv.onrender.com"  # Указан твой URL
+BASE_URL = "https://nvvnv.onrender.com"  # URL сервера
+WEBHOOK_PATH = "/telegram-webhook"
+WEBHOOK_URL = f"{BASE_URL}{WEBHOOK_PATH}"
 
 # Инициализация Flask
 app = Flask(__name__)
@@ -52,7 +54,6 @@ def generate_payment():
         f"sum={YOOMONEY_AMOUNT}&"
         f"label={label}"
     )
-    # Сохраняем временную запись о платеже
     conn = sqlite3.connect('data.db')
     c = conn.cursor()
     c.execute("INSERT INTO payments (user_id, amount, label, status) VALUES (?, ?, ?, ?)",
@@ -63,9 +64,8 @@ def generate_payment():
 
 # Webhook для YooMoney
 @app.route('/yoomoney-webhook', methods=['POST'])
-async def webhook():
+async def yoomoney_webhook():
     data = request.form.to_dict()
-    # Проверка подлинности уведомления
     params = [
         data.get('notification_type', ''),
         data.get('operation_id', ''),
@@ -85,7 +85,6 @@ async def webhook():
     if data.get('notification_type') == 'p2p-incoming':
         label = data.get('label')
         amount = float(data.get('amount'))
-        # Обновляем статус платежа
         conn = sqlite3.connect('data.db')
         c = conn.cursor()
         c.execute("UPDATE payments SET status = ?, datetime = ? WHERE label = ?",
@@ -94,22 +93,25 @@ async def webhook():
         user_id = c.fetchone()[0]
         conn.commit()
         conn.close()
-        # Генерируем инвайт-ссылку
         invite_link = await bot.create_chat_invite_link(chat_id=GROUP_ID, member_limit=1)
-        # Отправляем уведомление и ссылку
         await bot.send_message(user_id, f"Оплата успешна! Сумма: {amount} RUB\nВаша подписка активирована.\nПрисоединяйтесь: {invite_link.invite_link}")
     return "OK", 200
 
-# Обработчик сообщений
-@dp.message_handler(content_types=types.ContentType.ANY)
-async def command_start_handler(message: types.Message):
+# Webhook для Telegram
+@app.route(WEBHOOK_PATH, methods=['POST'])
+async def telegram_webhook():
+    update = types.Update.de_json(request.get_json())
+    await dp.process_update(update)
+    return jsonify({'ok': True})
+
+# Обработчик команды /start
+@dp.message_handler(commands=['start'])
+async def start_command(message: types.Message):
     user_id = str(message.from_user.id)
-    # Запрашиваем ссылку на оплату через API
     response = requests.get(f"{BASE_URL}/generate_payment?user_id={user_id}")
     data = response.json()
     payment_url = data["payment_url"]
 
-    # Создаем кнопки
     keyboard = types.InlineKeyboardMarkup()
     keyboard.add(types.InlineKeyboardButton(text="Оплатить", url=payment_url))
     welcome_text = (
@@ -121,18 +123,43 @@ async def command_start_handler(message: types.Message):
     )
     await message.answer(welcome_text, reply_markup=keyboard)
 
-# Запуск бота
-def on_startup(_):
-    print("Бот запущен")
+# Обработчик всех сообщений
+@dp.message_handler(content_types=types.ContentType.ANY)
+async def handle_all_messages(message: types.Message):
+    user_id = str(message.from_user.id)
+    response = requests.get(f"{BASE_URL}/generate_payment?user_id={user_id}")
+    data = response.json()
+    payment_url = data["payment_url"]
 
-def run_flask():
-    app.run(host='0.0.0.0', port=5000)
+    keyboard = types.InlineKeyboardMarkup()
+    keyboard.add(types.InlineKeyboardButton(text="Оплатить", url=payment_url))
+    welcome_text = (
+        "Тариф: фулл\n"
+        "Стоимость: 500.00 🇷🇺RUB\n"
+        "Срок действия: 1 месяц\n\n"
+        "Вы получите доступ к следующим ресурсам:\n"
+        "• Мой кайф (канал)"
+    )
+    await message.answer(welcome_text, reply_markup=keyboard)
+
+# Запуск приложения
+async def on_startup(_):
+    print("Бот запущен")
+    await bot.set_webhook(WEBHOOK_URL)
+
+async def on_shutdown(_):
+    await bot.delete_webhook()
+    await storage.close()
+    await storage.wait_closed()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
-    # Запускаем Flask в отдельном потоке
-    from threading import Thread
-    flask_thread = Thread(target=run_flask)
-    flask_thread.start()
-    # Запускаем бота
-    executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
+    start_webhook(
+        dispatcher=dp,
+        webhook_path=WEBHOOK_PATH,
+        on_startup=on_startup,
+        on_shutdown=on_shutdown,
+        skip_updates=True,
+        host="0.0.0.0",
+        port=5000
+    )
