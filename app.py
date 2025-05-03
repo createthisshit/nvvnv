@@ -1,24 +1,31 @@
 import uuid
+import requests
+import asyncio
+import logging
+import sys
+import sqlite3
+from datetime import datetime
 from flask import Flask, request, jsonify
+from aiogram import Bot, Dispatcher, F
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from yoomoney_api.notification import Notification
 from yoomoney_api.quickpay import Quickpay
-from aiogram import Bot, Dispatcher, executor, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-import sqlite3
-import asyncio
-from datetime import datetime
 
 # Настройки
-YOOMONEY_SECRET = "your_secret_word"  # Секретное слово YooMoney
-TELEGRAM_TOKEN = "your_bot_token"  # Токен Telegram-бота
-WALLET_NUMBER = "your_wallet_number"  # Номер кошелька YooMoney
-GROUP_ID = "your_group_id"  # ID закрытой группы (например, -100123456789)
-SUBSCRIPTION_AMOUNT = 100  # Стоимость подписки в рублях
+TOKEN = "7629991596:AAHkBKWyvz7T2MdaItlQcL90YnOi0Zh11tY"  # Токен Telegram-бота
+YOOMONEY_WALLET = "4100118178122985"  # Номер кошелька YooMoney
+YOOMONEY_SECRET = "CoqQlgE3E5cTzyAKY1LSiLU1"  # Секретное слово YooMoney (из настроек уведомлений)
+YOOMONEY_AMOUNT = 1  # Сумма подписки в рублях
+GROUP_ID = -1002291268265  # ID закрытой группы
 
-# Инициализация
-app = Flanagan(__name__)
-bot = Bot(token=TELEGRAM_TOKEN)
-dp = Dispatcher(bot)
+# Инициализация Flask
+app = Flask(__name__)
+
+# Инициализация бота
+bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+dp = Dispatcher()
 
 # Инициализация SQLite
 def init_db():
@@ -37,9 +44,9 @@ def generate_payment():
     user_id = request.args.get('user_id')
     label = str(uuid.uuid4())  # Уникальный идентификатор платежа
     quickpay = Quickpay(
-        receiver=WALLET_NUMBER,
+        receiver=YOOMONEY_WALLET,
         quickpay_form="shop",
-        sum=SUBSCRIPTION_AMOUNT,
+        sum=YOOMONEY_AMOUNT,
         label=label,
         payment_type="AC"
     )
@@ -47,7 +54,7 @@ def generate_payment():
     conn = sqlite3.connect('data.db')
     c = conn.cursor()
     c.execute("INSERT INTO payments (user_id, amount, label, status) VALUES (?, ?, ?, ?)",
-              (user_id, SUBSCRIPTION_AMOUNT, label, "pending"))
+              (user_id, YOOMONEY_AMOUNT, label, "pending"))
     conn.commit()
     conn.close()
     return jsonify({"payment_url": quickpay.redirected_url, "label": label})
@@ -78,33 +85,40 @@ async def webhook():
         await bot.send_message(user_id, f"Оплата успешна! Сумма: {amount} RUB\nВаша подписка активирована.\nПрисоединяйтесь: {invite_link.invite_link}")
     return "OK", 200
 
-# Команда /start
-@dp.message_handler(commands=['start'])
-async def start(message: types.Message):
-    keyboard = InlineKeyboardMarkup()
-    keyboard.add(InlineKeyboardButton("Оплатить подписку", callback_data="pay_subscription"))
-    await message.reply("Нажмите, чтобы оформить подписку:", reply_markup=keyboard)
-
-# Обработка кнопки оплаты
-@dp.callback_query_handler(text="pay_subscription")
-async def process_payment(callback: types.CallbackQuery):
-    user_id = str(callback.from_user.id)
+# Обработчик сообщений
+@dp.message()
+async def command_start_handler(message: Message):
+    user_id = str(message.from_user.id)
     # Запрашиваем ссылку на оплату через API
-    async with aiohttp.ClientSession() as session:
-        async with session.get(f"https://your-app.onrender.com/generate_payment?user_id={user_id}") as resp:
-            data = await resp.json()
-            payment_url = data["payment_url"]
-    keyboard = InlineKeyboardMarkup()
-    keyboard.add(InlineKeyboardButton("Оплатить", url=payment_url))
-    await callback.message.edit_text("Перейдите по ссылке для оплаты:", reply_markup=keyboard)
+    response = requests.get(f"https://your-app.onrender.com/generate_payment?user_id={user_id}")
+    data = response.json()
+    payment_url = data["payment_url"]
+
+    # Создаем кнопки
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Оплатить", url=payment_url)]
+    ])
+    welcome_text = (
+        "Тариф: фулл\n"
+        "Стоимость: 500.00 🇷🇺RUB\n"
+        "Срок действия: 1 месяц\n\n"
+        "Вы получите доступ к следующим ресурсам:\n"
+        "• Мой кайф (канал)"
+    )
+    await message.answer(welcome_text, reply_markup=keyboard)
 
 # Запуск бота
 async def on_startup(_):
     print("Бот запущен")
 
+def run_flask():
+    app.run(host='0.0.0.0', port=5000)
+
 if __name__ == "__main__":
-    # Запускаем Flask и aiogram
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+    # Запускаем Flask в отдельном потоке
     from threading import Thread
-    flask_thread = Thread(target=app.run, kwargs={'host': '0.0.0.0', 'port': 5000})
+    flask_thread = Thread(target=run_flask)
     flask_thread.start()
-    executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
+    # Запускаем бота
+    asyncio.run(dp.start_polling(bot))
