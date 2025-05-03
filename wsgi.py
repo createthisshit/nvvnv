@@ -1,19 +1,16 @@
-from app import bot, dp, on_startup
-from aiogram.utils import executor
-import asyncio
-
-# Запускаем polling в асинхронном режиме
-def run_bot():
-    loop = asyncio.get_event_loop()
-    executor.start_polling(dp, skip_updates=True, on_startup=on_startup, loop=loop)
-
-# Минимальное WSGI-приложение для Render
+import threading
 from flask import Flask
+from app import start_bot
+
+# Минимальное Flask-приложение для Gunicorn
 app = Flask(__name__)
 
 @app.route('/')
 def index():
     return "Bot is running"
 
+# Запускаем бот в отдельном потоке
+threading.Thread(target=start_bot, daemon=True).start()
+
 if __name__ == "__main__":
-    run_bot()
+    app.run(host='0.0.0.0', port=5000)
