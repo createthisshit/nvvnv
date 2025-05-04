@@ -124,8 +124,18 @@ async def pay_command(message_or_callback: types.Message | types.CallbackQuery):
 
 # Запуск бота
 async def on_shutdown(dp):
-    logger.info("Закрытие бота")
-    await bot.close()
+    logger.info("Начало процедуры завершения бота")
+    try:
+        if bot._session is not None:
+            await bot.session.close()
+            logger.info("Сессия бота успешно закрыта")
+        else:
+            logger.warning("Сессия бота уже закрыта или не инициализирована")
+        await storage.close()
+        await storage.wait_closed()
+        logger.info("Хранилище закрыто")
+    except Exception as e:
+        logger.error(f"Ошибка при завершении: {e}")
 
 def on_startup(_):
     logger.info("Бот запущен")
