@@ -126,16 +126,14 @@ async def pay_command(message_or_callback: types.Message | types.CallbackQuery):
 async def on_shutdown(dp):
     logger.info("Начало процедуры завершения бота")
     try:
-        if bot._session is not None:
-            await bot.session.close()
+        session = await bot.get_session()
+        if session is not None:
+            await session.close()
             logger.info("Сессия бота успешно закрыта")
         else:
-            logger.warning("Сессия бота уже закрыта или не инициализирована")
-        await storage.close()
-        await storage.wait_closed()
-        logger.info("Хранилище закрыто")
+            logger.warning("Сессия бота не инициализирована")
     except Exception as e:
-        logger.error(f"Ошибка при завершении: {e}")
+        logger.error(f"Ошибка при завершении сессии: {e}")
 
 def on_startup(_):
     logger.info("Бот запущен")
@@ -145,5 +143,5 @@ if __name__ == "__main__":
     try:
         executor.start_polling(dp, skip_updates=True, on_startup=on_startup, on_shutdown=on_shutdown)
     except Exception as e:
-        logger.error(f"Ошибка запуска polling: {e}")
+        logger.error(f"Критическая ошибка запуска polling: {e}")
         sys.exit(1)
