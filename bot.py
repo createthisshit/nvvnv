@@ -7,6 +7,7 @@ from aiogram.utils import executor
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import requests
 from urllib.parse import urlencode
+import traceback
 
 # Настройка логирования
 logging.basicConfig(
@@ -126,14 +127,10 @@ async def pay_command(message_or_callback: types.Message | types.CallbackQuery):
 async def on_shutdown(dp):
     logger.info("Начало процедуры завершения бота")
     try:
-        session = await bot.get_session()
-        if session is not None:
-            await session.close()
-            logger.info("Сессия бота успешно закрыта")
-        else:
-            logger.warning("Сессия бота не инициализирована")
+        await dp.bot.close()
+        logger.info("Бот успешно закрыт")
     except Exception as e:
-        logger.error(f"Ошибка при завершении сессии: {e}")
+        logger.error(f"Ошибка при завершении: {e}")
 
 def on_startup(_):
     logger.info("Бот запущен")
@@ -143,5 +140,5 @@ if __name__ == "__main__":
     try:
         executor.start_polling(dp, skip_updates=True, on_startup=on_startup, on_shutdown=on_shutdown)
     except Exception as e:
-        logger.error(f"Критическая ошибка запуска polling: {e}")
+        logger.error(f"Критическая ошибка запуска polling: {e}\n{traceback.format_exc()}")
         sys.exit(1)
